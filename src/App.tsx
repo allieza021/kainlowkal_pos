@@ -33,7 +33,7 @@ import type {
   ReceiptOrder,
   StaffProfile
 } from './types';
-import { exportCsv, formatCurrency, formatDateTime, getDateRange } from './lib/utils';
+import { exportCsv, formatCurrency, formatDateTime, getDateRange, toDbOrderType, fromDbOrderType, toDbPaymentMethod, fromDbPaymentMethod, toDbPaymentStatus, fromDbPaymentStatus } from './lib/utils';
 
 type AppSettingsRow = { key: string; value: string | null };
 
@@ -52,6 +52,20 @@ function settingsFromRows(rows: AppSettingsRow[]): BusinessSettings {
     logo_url: map.logo_url || defaultSettings.logo_url,
     receipt_footer: map.receipt_footer || defaultSettings.receipt_footer
   };
+}
+
+function getErrorMessage(err: any): string {
+  if (!err) return 'Unknown error';
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'object') {
+    const parts = [];
+    if (err.message) parts.push(err.message);
+    if (err.details) parts.push(err.details);
+    if (err.hint) parts.push(`Hint: ${err.hint}`);
+    if (err.code) parts.push(`Code: ${err.code}`);
+    return parts.length ? parts.join(' | ') : JSON.stringify(err);
+  }
+  return String(err);
 }
 
 function useSupabaseData() {
@@ -108,8 +122,8 @@ function Modal({
 }
 
 function LoginScreen({ onSignedIn }: { onSignedIn: () => void }) {
-  const { supabase, session, loading } = useAuth();
-  const [email, setEmail] = useState('');
+  const { supabase, session, loading, setSessionData } = useAuth();
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState('');
@@ -127,41 +141,18 @@ function LoginScreen({ onSignedIn }: { onSignedIn: () => void }) {
     }
     setBusy(true);
     setMessage('');
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setMessage(error.message);
+    const { data, error } = await supabase.from('staff_profiles').select('*').eq('username', username).eq('password', password).maybeSingle();
+    if (error) {
+      setMessage(error.message);
+    } else if (!data) {
+      setMessage('Invalid username or password');
+    } else {
+      setSessionData(data);
+    }
     setBusy(false);
   }
 
-  async function setupDefaultAdmin() {
-    if (!supabase) {
-      setMessage('Supabase is not configured.');
-      return;
-    }
-    setBusy(true);
-    setMessage('');
-    const adminEmail = 'admin@kainlowkal.pos';
-    const adminPassword = 'password123';
-    const { data, error } = await supabase.auth.signUp({
-      email: adminEmail,
-      password: adminPassword,
-      options: { data: { display_name: 'Admin' } }
-    });
-    if (error) {
-      setMessage(error.message);
-      setBusy(false);
-      return;
-    }
-    const userId = data.user?.id;
-    if (userId) {
-      await supabase.from('staff_profiles').upsert({
-        id: userId,
-        display_name: 'Admin',
-        role: 'admin'
-      });
-    }
-    setMessage(`Default admin created: ${adminEmail} / ${adminPassword}`);
-    setBusy(false);
-  }
+
 
   if (loading) {
     return (
@@ -179,12 +170,12 @@ function LoginScreen({ onSignedIn }: { onSignedIn: () => void }) {
 
           <div className="mt-6 space-y-4">
             <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700">Email</label>
+              <label className="mb-2 block text-sm font-medium text-gray-700">Username</label>
               <input
                 className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-transparent focus:ring-2 focus:ring-orange-400"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@kainlowkal.pos or setup a new account"
+                value={username}
+                onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))}
+                placeholder="e.g. admin"
               />
             </div>
             <div>
@@ -217,23 +208,7 @@ function LoginScreen({ onSignedIn }: { onSignedIn: () => void }) {
             </button>
           </div>
 
-          <div className="my-6 border-t border-gray-100" />
 
-          <div className="space-y-3">
-            <div className="text-sm font-semibold text-gray-900">Setup Default Admin Account</div>
-            <p className="text-sm text-gray-600">
-              Creates <span className="font-medium">admin@kainlowkal.pos</span> with password{' '}
-              <span className="font-medium">password123</span> and a matching admin profile.
-            </p>
-            <button
-              type="button"
-              onClick={setupDefaultAdmin}
-              disabled={busy}
-              className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition-all hover:bg-gray-50 disabled:opacity-50"
-            >
-              Setup Default Admin Account
-            </button>
-          </div>
         </form>
     </div>
   );
@@ -274,11 +249,13 @@ function ReceiptModal({
 function POSPage({
   settings,
   onSavedReceipt,
-  onRefreshSettings
+  onRefreshSettings,
+  catalogRefresh
 }: {
   settings: BusinessSettings;
   onSavedReceipt: (order: ReceiptOrder) => void;
   onRefreshSettings: () => Promise<void>;
+  catalogRefresh: number;
 }) {
   const { supabase, profile } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
@@ -288,7 +265,7 @@ function POSPage({
   const [loading, setLoading] = useState(true);
   const [variantProduct, setVariantProduct] = useState<(Product & { variants?: ProductVariant[] }) | null>(null);
   const [orderType, setOrderType] = useState<OrderType>('Dine In');
-  const [customerName, setCustomerName] = useState('Walk-in');
+  const [customerName, setCustomerName] = useState('');
   const [customerContact, setCustomerContact] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [deliveryFee, setDeliveryFee] = useState(0);
@@ -318,7 +295,7 @@ function POSPage({
 
   useEffect(() => {
     loadCatalog();
-  }, [supabase]);
+  }, [supabase, catalogRefresh]);
 
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.quantity * item.unit_price, 0), [cart]);
   const total = subtotal + (orderType === 'Delivery' ? Number(deliveryFee || 0) : 0);
@@ -343,39 +320,74 @@ function POSPage({
 
   function placeOrder() {
     if (!supabase) return;
+    if (cart.length === 0) {
+      alert('Cart is empty!');
+      return;
+    }
     (async () => {
+      // Auto-increment order_number correctly handling string prefixes
+      const { data: lastOrder } = await supabase
+        .from('orders')
+        .select('order_number')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      let nextOrderNum = '1001';
+      if (lastOrder?.order_number) {
+        const match = String(lastOrder.order_number).match(/(\d+)$/);
+        if (match) {
+          const prefix = String(lastOrder.order_number).slice(0, match.index);
+          const num = parseInt(match[1], 10) + 1;
+          const numStr = String(num).padStart(match[1].length, '0');
+          nextOrderNum = prefix + numStr;
+        } else {
+          nextOrderNum = lastOrder.order_number + '-1';
+        }
+      }
+
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .insert({
-          order_type: orderType,
+          order_number: nextOrderNum,
+          order_type: toDbOrderType(orderType),
           customer_name: customerName || 'Walk-in',
           customer_contact: customerContact || null,
           delivery_address: orderType === 'Delivery' ? deliveryAddress || null : null,
-          delivery_fee: orderType === 'Delivery' ? deliveryFee : 0,
-          subtotal,
-          total,
-          payment_method: paymentMethod,
-          payment_status: paymentStatus,
+          delivery_fee: orderType === 'Delivery' ? parseFloat(String(deliveryFee)) : 0,
+          subtotal: parseFloat(String(subtotal)),
+          total: parseFloat(String(total)),
+          payment_method: toDbPaymentMethod(paymentMethod),
+          payment_status: toDbPaymentStatus(paymentStatus),
           cashier_id: profile?.id ?? null,
           notes: notes || null
         })
         .select('*')
         .single();
-      if (orderError || !orderData) return;
+        
+      if (orderError) {
+        alert(`Failed to create order: ${orderError.message}`);
+        return;
+      }
+      if (!orderData) return;
       const createdOrder = orderData as Order;
       if (cart.length) {
-        await supabase.from('order_items').insert(
+        const { error: itemsError } = await supabase.from('order_items').insert(
           cart.map((item) => ({
             order_id: createdOrder.id,
             product_id: item.product_id,
             product_name: item.product_name,
             variant_name: item.variant_name || null,
             quantity: item.quantity,
-            unit_price: item.unit_price,
-            total_price: item.quantity * item.unit_price,
+            unit_price: parseFloat(String(item.unit_price)),
+            total_price: parseFloat(String(item.quantity * item.unit_price)),
             notes: item.notes || null
           }))
         );
+        if (itemsError) {
+          alert(`Failed to add items to order: ${itemsError.message}`);
+          // Consider if we should rollback the order here or just show the error.
+        }
       }
       const receipt: ReceiptOrder = {
         ...createdOrder,
@@ -399,7 +411,7 @@ function POSPage({
       setReceiptOrder(receipt);
       onSavedReceipt(receipt);
       setCart([]);
-      setCustomerName('Walk-in');
+      setCustomerName('');
       setCustomerContact('');
       setDeliveryAddress('');
       setDeliveryFee(0);
@@ -514,7 +526,7 @@ function POSPage({
 
               <div className="mt-6 space-y-4">
                 <div className="grid grid-cols-2 gap-3">
-                  {(['Dine In', 'Take Out', 'Pick Up', 'Delivery'] as OrderType[]).map((type) => (
+                  {(['Dine In', 'Take Out', 'Pickup', 'Delivery'] as OrderType[]).map((type) => (
                     <button
                       key={type}
                       onClick={() => setOrderType(type)}
@@ -528,11 +540,12 @@ function POSPage({
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">Customer Name *</label>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500">Customer Name (Optional)</label>
                   <input
                     className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-transparent focus:ring-2 focus:ring-orange-400"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="e.g. Juan"
                   />
                 </div>
 
@@ -707,7 +720,7 @@ function orderTypeTone(type: OrderType): string {
   const tones: Record<OrderType, string> = {
     'Dine In': 'bg-blue-50 text-blue-600',
     'Take Out': 'bg-purple-50 text-purple-600',
-    'Pick Up': 'bg-green-50 text-green-600',
+    'Pickup': 'bg-green-50 text-green-600',
     'Delivery': 'bg-orange-50 text-orange-600'
   };
   return tones[type];
@@ -725,6 +738,7 @@ function AppFrame() {
     return saved && ['pos', 'orders', 'dashboard', 'menu', 'settings'].includes(saved) ? saved : 'pos';
   });
   const [receiptPreview, setReceiptPreview] = useState<ReceiptOrder | null>(null);
+  const [catalogRefresh, setCatalogRefresh] = useState(0);
 
   useEffect(() => {
     localStorage.setItem('lastPage', page);
@@ -769,6 +783,7 @@ function AppFrame() {
           settings={settings}
           onSavedReceipt={(order) => setReceiptPreview(order)}
           onRefreshSettings={refreshSettings}
+          catalogRefresh={catalogRefresh}
         />
       ) : null}
       {page === 'dashboard' ? (
@@ -778,7 +793,7 @@ function AppFrame() {
         <OrdersPage settings={settings} supabase={supabase} onEditToPos={() => setPage('pos')} onPreviewReceipt={(order) => setReceiptPreview(order)} />
       ) : null}
       {page === 'menu' ? (
-        <MenuManagementPage settings={settings} supabase={supabase} onReload={refreshSettings} />
+        <MenuManagementPage settings={settings} supabase={supabase} onReload={refreshSettings} onRefreshCatalog={() => setCatalogRefresh(prev => prev + 1)} />
       ) : null}
       {page === 'settings' ? (
         <SettingsPage settings={settings} setSettings={setSettings} supabase={supabase} profile={profile || null} onReload={refreshSettings} />
@@ -795,9 +810,16 @@ function DashboardPage({ settings, supabase }: { settings: BusinessSettings; sup
   const [loading, setLoading] = useState(true);
 
   async function load() {
+    setLoading(true);
     const range = getDateRange(period);
     const { data } = await supabase.from('orders').select('*, order_items(*)').gte('created_at', range.start).order('created_at', { ascending: false });
-    setOrders(((data || []) as any[]).map((row) => ({ ...row, items: row.order_items || row.items })) as Order[]);
+    setOrders(((data || []) as any[]).map((row) => ({
+      ...row,
+      order_type: fromDbOrderType(row.order_type),
+      payment_method: fromDbPaymentMethod(row.payment_method),
+      payment_status: fromDbPaymentStatus(row.payment_status),
+      items: row.order_items || row.items
+    })) as Order[]);
     setLoading(false);
   }
 
@@ -1194,14 +1216,14 @@ function EditOrderForm({ order, onSave }: { order: Order; onSave: (updated: Part
   const [form, setForm] = useState({
     order_type: order.order_type,
     customer_name: order.customer_name,
-    customer_contact: order.customer_contact || '',
-    delivery_address: order.delivery_address || '',
-    delivery_fee: order.delivery_fee,
+    customer_contact: order.customer_contact ?? '',
+    delivery_address: order.delivery_address ?? '',
+    delivery_fee: order.delivery_fee ?? 0,
     payment_method: order.payment_method,
     payment_status: order.payment_status,
-    notes: order.notes || ''
+    notes: order.notes ?? ''
   });
-  const [items, setItems] = useState<OrderItem[]>(order.items || []);
+  const [items, setItems] = useState<OrderItem[]>(order.items ?? []);
   const [showItems, setShowItems] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -1240,7 +1262,7 @@ function EditOrderForm({ order, onSave }: { order: Order; onSave: (updated: Part
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-600">Order Type</label>
           <select className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm" value={form.order_type} onChange={(e) => setForm({ ...form, order_type: e.target.value as OrderType })}>
-            {(['Dine In', 'Take Out', 'Pick Up', 'Delivery'] as OrderType[]).map((item) => <option key={item}>{item}</option>)}
+            {(['Dine In', 'Take Out', 'Pickup', 'Delivery'] as OrderType[]).map((item) => <option key={item}>{item}</option>)}
           </select>
         </div>
         <div>
@@ -1353,11 +1375,13 @@ function EditOrderForm({ order, onSave }: { order: Order; onSave: (updated: Part
 function MenuManagementPage({
   settings,
   supabase,
-  onReload
+  onReload,
+  onRefreshCatalog
 }: {
   settings: BusinessSettings;
   supabase: NonNullable<ReturnType<typeof useAuth>['supabase']>;
   onReload: () => Promise<void>;
+  onRefreshCatalog: () => void;
 }) {
   const { profile } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
@@ -1423,6 +1447,7 @@ function MenuManagementPage({
     }
     setProductModal(null);
     await load();
+    onRefreshCatalog();
   }
 
   async function toggleSoldOut(product: Product) {
@@ -1437,9 +1462,19 @@ function MenuManagementPage({
   }
 
   async function removeCategory(category: Category) {
-    if (!confirm('Delete this category and all its products?')) return;
-    await supabase.from('categories').delete().eq('id', category.id);
-    await load();
+    if (!confirm(`Are you sure you want to delete the category "${category.name}" and all its products?`)) return;
+    try {
+      const { data: categoryProducts } = await supabase.from('products').select('id').eq('category_id', category.id);
+      if (categoryProducts && categoryProducts.length > 0) {
+        const productIds = categoryProducts.map((p) => p.id);
+        await supabase.from('product_variants').delete().in('product_id', productIds);
+        await supabase.from('products').delete().in('id', productIds);
+      }
+      await supabase.from('categories').delete().eq('id', category.id);
+      await load();
+    } catch (err) {
+      alert('Failed to delete category: ' + getErrorMessage(err));
+    }
   }
 
   return (
@@ -1456,16 +1491,36 @@ function MenuManagementPage({
       <div className="space-y-4">
         {categories.map((category) => (
           <div key={category.id} className="rounded-2xl border border-gray-100 bg-white">
-            <button
-              onClick={() => setOpenCategory((current) => (current === category.id ? null : category.id))}
-              className="flex w-full items-center justify-between px-4 py-4 text-left"
-            >
-              <div>
-                <div className="font-semibold text-gray-900">{category.name}</div>
-                <div className="text-sm text-gray-500">Sort order: {category.sort_order}</div>
+            <div className="flex items-center justify-between px-4 py-3">
+              <button
+                onClick={() => setOpenCategory((current) => (current === category.id ? null : category.id))}
+                className="flex-1 flex items-center justify-between text-left"
+              >
+                <div>
+                  <div className="font-semibold text-gray-900">{category.name}</div>
+                  <div className="text-sm text-gray-500">Sort order: {category.sort_order}</div>
+                </div>
+                <div className="mr-4 text-gray-500">
+                  {openCategory === category.id ? <ChevronUp /> : <ChevronDown />}
+                </div>
+              </button>
+              <div className="flex items-center gap-2 border-l border-gray-100 pl-4">
+                <button
+                  onClick={() => setCategoryModal(category)}
+                  className="rounded-xl border border-gray-200 p-2 text-gray-700 hover:bg-gray-50 transition"
+                  title="Edit Category"
+                >
+                  <FilePenLine size={16} />
+                </button>
+                <button
+                  onClick={() => removeCategory(category)}
+                  className="rounded-xl border border-red-200 p-2 text-red-500 hover:bg-red-50 transition"
+                  title="Delete Category"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
-              {openCategory === category.id ? <ChevronUp /> : <ChevronDown />}
-            </button>
+            </div>
             {openCategory === category.id ? (
               <div className="border-t border-gray-100 p-4">
                 <div className="space-y-2">
@@ -1524,14 +1579,33 @@ function CategoryForm({
   category: Partial<Category>;
   onSave: (category: Partial<Category>) => Promise<void>;
 }) {
-  const [name, setName] = useState(category.name || '');
-  const [sortOrder, setSortOrder] = useState(category.sort_order || 0);
+  const [name, setName] = useState(category.name ?? '');
+  const [sortOrder, setSortOrder] = useState(category.sort_order ?? 0);
+  const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  async function handleSave() {
+    setSaving(true);
+    setErrorMessage('');
+
+    try {
+      await onSave({ ...category, name, sort_order: sortOrder });
+    } catch (err) {
+      const message = getErrorMessage(err);
+      console.error('Failed to save category:', err);
+      setErrorMessage(`Failed to save category: ${message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <input className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="Category name" />
       <input className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm" type="number" value={sortOrder} onChange={(e) => setSortOrder(Number(e.target.value))} />
-      <button className="w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white" onClick={() => onSave({ ...category, name, sort_order: sortOrder })}>
-        Save Category
+      {errorMessage ? <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{errorMessage}</div> : null}
+      <button disabled={saving} className="w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50" onClick={handleSave}>
+        {saving ? 'Saving...' : 'Save Category'}
       </button>
     </div>
   );
@@ -1546,19 +1620,45 @@ function ProductForm({
   product: Partial<Product> & { variants?: ProductVariant[] };
   onSave: (product: Partial<Product> & { variants?: ProductVariant[] }) => Promise<void>;
 }) {
-  const [name, setName] = useState(product.name || '');
-  const [categoryId, setCategoryId] = useState(product.category_id || categories[0]?.id || '');
-  const [price, setPrice] = useState(product.price || 0);
-  const [sortOrder, setSortOrder] = useState(product.sort_order || 0);
+  const [name, setName] = useState(product.name ?? '');
+  const [categoryId, setCategoryId] = useState(product.category_id ?? categories[0]?.id ?? '');
+  const [price, setPrice] = useState(product.price ?? 0);
+  const [sortOrder, setSortOrder] = useState(product.sort_order ?? 0);
   const [isActive, setIsActive] = useState(product.is_active ?? true);
   const [isSoldOut, setIsSoldOut] = useState(product.is_sold_out ?? false);
   const [variants, setVariants] = useState<ProductVariant[]>(product.variants || []);
+  const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   function addVariant() {
     setVariants((current) => [
       ...current,
       { id: crypto.randomUUID(), product_id: product.id || '', name: '', price_modifier: 0, sort_order: current.length }
     ]);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setErrorMessage('');
+
+    try {
+      await onSave({
+        ...product,
+        category_id: categoryId,
+        name,
+        price,
+        sort_order: sortOrder,
+        is_active: isActive,
+        is_sold_out: isSoldOut,
+        variants
+      });
+    } catch (err) {
+      const message = getErrorMessage(err);
+      console.error('Failed to save product:', err);
+      setErrorMessage(`Failed to save product: ${message}`);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -1621,22 +1721,14 @@ function ProductForm({
           ))}
         </div>
       </div>
+      {errorMessage ? <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{errorMessage}</div> : null}
+
       <button
-        className="w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white"
-        onClick={() =>
-          onSave({
-            ...product,
-            category_id: categoryId,
-            name,
-            price,
-            sort_order: sortOrder,
-            is_active: isActive,
-            is_sold_out: isSoldOut,
-            variants
-          })
-        }
+        disabled={saving}
+        className="w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+        onClick={handleSave}
       >
-        Save Changes
+        {saving ? 'Saving...' : 'Save Changes'}
       </button>
     </div>
   );
@@ -1666,7 +1758,7 @@ function SettingsPage({
   const [initialSettings, setInitialSettings] = useState<BusinessSettings>(settings);
   const [form, setForm] = useState({
     display_name: '',
-    email: '',
+    username: '',
     password: '',
     role: 'admin' as StaffProfile['role']
   });
@@ -1680,8 +1772,7 @@ function SettingsPage({
 
   useEffect(() => {
     loadStaff();
-    setInitialSettings(settings);
-  }, [supabase, settings]);
+  }, [supabase]);
 
   async function handleSaveSettings() {
     setSaving(true);
@@ -1699,7 +1790,7 @@ function SettingsPage({
       setMessageType('success');
       await onReload();
     } catch (err) {
-      setMessage(`✗ Failed to save: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setMessage(`✗ Failed to save: ${getErrorMessage(err)}`);
       setMessageType('error');
     } finally {
       setSaving(false);
@@ -1744,7 +1835,7 @@ function SettingsPage({
         setTimeout(() => setMessage(''), 3000);
       }
     } catch (err) {
-      setMessage(`✗ Upload failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setMessage(`✗ Upload failed: ${getErrorMessage(err)}`);
       setMessageType('error');
       setTimeout(() => setMessage(''), 3000);
     } finally {
@@ -1755,19 +1846,16 @@ function SettingsPage({
   async function createStaff() {
     setBusy(true);
     setMessage('');
-    const { data, error } = await supabase.auth.signUp({
-      email: form.email,
+    const { error } = await supabase.from('staff_profiles').insert({
+      username: form.username,
       password: form.password,
-      options: { data: { display_name: form.display_name, role: form.role } }
+      display_name: form.display_name,
+      role: form.role
     });
     if (error) {
       setMessage(error.message);
       setBusy(false);
       return;
-    }
-    const userId = data.user?.id;
-    if (userId) {
-      await supabase.from('staff_profiles').upsert({ id: userId, display_name: form.display_name, role: form.role });
     }
     setAddStaff(false);
     setBusy(false);
@@ -1919,7 +2007,7 @@ function SettingsPage({
         <Modal title="Add Staff" onClose={() => setAddStaff(false)} widthClass="max-w-md">
           <div className="space-y-3">
             <input className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm" placeholder="Display name" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} />
-            <input className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <input className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm" placeholder="Username (letters/numbers only)" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '') })} />
             <div className="relative">
               <input className="w-full rounded-xl border border-gray-200 px-3 py-2.5 pr-10 text-sm" type={showPassword ? 'text' : 'password'} placeholder="Password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
               <button type="button" onClick={() => setShowPassword((value) => !value)} className="absolute inset-y-0 right-0 px-3 text-gray-400">

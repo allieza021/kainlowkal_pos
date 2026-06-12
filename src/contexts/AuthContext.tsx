@@ -1,24 +1,24 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { Session } from '@supabase/supabase-js';
 import { getSupabaseClient, hasSupabaseConfig } from '../lib/supabase';
 import type { StaffProfile } from '../types';
 
 type AuthContextValue = {
   supabase: ReturnType<typeof getSupabaseClient>;
-  session: Session | null;
+  session: { user: { id: string } } | null;
   profile: StaffProfile | null;
   loading: boolean;
   error: string;
   refreshProfile: () => Promise<void>;
   signOut: () => Promise<void>;
   clearError: () => void;
+  setSessionData: (profile: StaffProfile) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = useMemo(() => getSupabaseClient(), []);
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<{ user: { id: string } } | null>(null);
   const [profile, setProfile] = useState<StaffProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -41,32 +41,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return;
       }
-      const { data } = await supabase.auth.getSession();
-      if (!mounted) return;
-      setSession(data.session ?? null);
-      if (data.session?.user?.id) {
-        await loadProfile(data.session.user.id);
+      const savedUserId = localStorage.getItem('custom_auth_user_id');
+      if (savedUserId && mounted) {
+        setSession({ user: { id: savedUserId } });
+        await loadProfile(savedUserId);
       }
-      setLoading(false);
+      if (mounted) setLoading(false);
     }
 
     initialize();
 
-    const { data } = supabase
-      ? supabase.auth.onAuthStateChange(async (_event, nextSession) => {
-          setSession(nextSession);
-          if (nextSession?.user?.id) {
-            await loadProfile(nextSession.user.id);
-          } else {
-            setProfile(null);
-          }
-          setLoading(false);
-        })
-      : { subscription: { unsubscribe() {} } };
-
     return () => {
       mounted = false;
-      data?.subscription.unsubscribe();
     };
   }, [supabase]);
 
@@ -77,10 +63,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signOut() {
-    if (!supabase) return;
-    await supabase.auth.signOut();
+    localStorage.removeItem('custom_auth_user_id');
     setSession(null);
     setProfile(null);
+  }
+
+  function setSessionData(newProfile: StaffProfile) {
+    localStorage.setItem('custom_auth_user_id', newProfile.id);
+    setSession({ user: { id: newProfile.id } });
+    setProfile(newProfile);
   }
 
   const value: AuthContextValue = {
@@ -91,7 +82,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     error,
     refreshProfile,
     signOut,
-    clearError: () => setError('')
+    clearError: () => setError(''),
+    setSessionData
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

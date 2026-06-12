@@ -52,7 +52,7 @@ export function orderTypeTone(type: OrderType) {
   switch (type) {
     case 'Delivery':
       return 'bg-green-50 text-green-600';
-    case 'Pick Up':
+    case 'Pickup':
       return 'bg-purple-50 text-purple-600';
     case 'Take Out':
       return 'bg-amber-50 text-amber-600';
@@ -81,4 +81,43 @@ export function useDebounce<T>(value: T, delay: number, callback: (val: T) => vo
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, [value, delay, callback]);
+}
+
+export function toDbOrderType(type: string): string {
+  if (type === 'Dine In') return 'dine_in';
+  if (type === 'Take Out') return 'take_out';
+  if (type === 'Pickup' || type === 'Pick Up') return 'pick_up';
+  if (type === 'Delivery') return 'delivery';
+  return String(type || '').toLowerCase().replace(' ', '_');
+}
+
+export function fromDbOrderType(type: string): OrderType {
+  if (type === 'dine_in') return 'Dine In';
+  if (type === 'take_out') return 'Take Out';
+  if (type === 'pick_up') return 'Pickup';
+  if (type === 'delivery') return 'Delivery';
+  return 'Dine In';
+}
+
+export function toDbPaymentMethod(method: string): string {
+  return String(method || '').toLowerCase().replace(' ', '_');
+}
+
+export function fromDbPaymentMethod(method: string): PaymentMethod {
+  if (method === 'cash') return 'Cash';
+  if (method === 'gcash') return 'GCash';
+  if (method === 'maya') return 'Maya';
+  if (method === 'maribank') return 'MariBank';
+  if (method === 'bank_transfer') return 'Bank Transfer';
+  if (method === 'other') return 'Other';
+  return 'Cash';
+}
+
+export function toDbPaymentStatus(status: string): string {
+  return String(status || '').toLowerCase();
+}
+
+export function fromDbPaymentStatus(status: string): PaymentStatus {
+  if (status === 'paid') return 'Paid';
+  return 'Unpaid';
 }

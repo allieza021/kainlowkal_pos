@@ -1,5 +1,5 @@
 export type Role = 'admin';
-export type OrderType = 'Dine In' | 'Take Out' | 'Pick Up' | 'Delivery';
+export type OrderType = 'Dine In' | 'Take Out' | 'Pickup' | 'Delivery';
 export type PaymentMethod = 'Cash' | 'GCash' | 'Maya' | 'MariBank' | 'Bank Transfer' | 'Other';
 export type PaymentStatus = 'Paid' | 'Unpaid';
 

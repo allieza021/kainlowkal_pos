@@ -5,7 +5,7 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 do $$ begin
-  create type public.order_type as enum ('Dine In', 'Take Out', 'Pick Up', 'Delivery');
+  create type public.order_type as enum ('Dine In', 'Take Out', 'Pickup', 'Delivery');
 exception when duplicate_object then null; end $$;
 
 do $$ begin
