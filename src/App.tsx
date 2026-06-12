@@ -1090,7 +1090,13 @@ function OrdersPage({
 
   async function load() {
     const { data } = await supabase.from('orders').select('*, order_items(*)').order('created_at', { ascending: false });
-    setOrders(((data || []) as any[]).map((row) => ({ ...row, items: row.order_items || row.items })) as Order[]);
+    setOrders(((data || []) as any[]).map((row) => ({
+      ...row,
+      order_type: fromDbOrderType(row.order_type),
+      payment_method: fromDbPaymentMethod(row.payment_method),
+      payment_status: fromDbPaymentStatus(row.payment_status),
+      items: row.order_items || row.items
+    })) as Order[]);
   }
 
   useEffect(() => {
@@ -1113,7 +1119,7 @@ function OrdersPage({
   async function toggleStatus(order: Order) {
     try {
       const next = order.payment_status === 'Paid' ? 'Unpaid' : 'Paid';
-      const { error } = await supabase.from('orders').update({ payment_status: next }).eq('id', order.id);
+      const { error } = await supabase.from('orders').update({ payment_status: toDbPaymentStatus(next) }).eq('id', order.id);
       if (error) throw error;
       await load();
     } catch (err: any) {
@@ -1128,6 +1134,9 @@ function OrdersPage({
 
       const payload = {
         ...orderUpdate,
+        order_type: orderUpdate.order_type ? toDbOrderType(orderUpdate.order_type as any) : undefined,
+        payment_method: orderUpdate.payment_method ? toDbPaymentMethod(orderUpdate.payment_method as any) : undefined,
+        payment_status: orderUpdate.payment_status ? toDbPaymentStatus(orderUpdate.payment_status as any) : undefined,
         delivery_fee: parseFloat(String(orderUpdate.delivery_fee ?? 0)),
         subtotal: parseFloat(String(orderUpdate.subtotal ?? 0)),
         total: parseFloat(String(orderUpdate.total ?? 0))
