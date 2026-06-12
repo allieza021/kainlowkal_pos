@@ -1,2 +1,17 @@
 node_modules/
 .next/
+dist/
+
+# Local env files (never commit secrets / Supabase keys)
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+tsconfig.tsbuildinfo
+
+# Supabase local development
+supabase/.branches
+supabase/.temp
+supabase/config.toml
+supabase/migrations/

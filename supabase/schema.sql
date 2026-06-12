@@ -109,6 +109,18 @@ create trigger trg_orders_updated_at before update on public.orders for each row
 drop trigger if exists trg_app_settings_updated_at on public.app_settings;
 create trigger trg_app_settings_updated_at before update on public.app_settings for each row execute function public.touch_updated_at();
 
+-- PostgREST connects as the anon/authenticated roles. Without table-level
+-- privileges every request is rejected with "permission denied for table"
+-- (SQLSTATE 42501) before row level security is even evaluated, which makes the
+-- whole app appear frozen (no products load, orders/price edits silently fail).
+-- RLS policies below restrict which rows each role may touch.
+grant usage on schema public to anon, authenticated, service_role;
+grant all on all tables in schema public to anon, authenticated, service_role;
+grant all on all sequences in schema public to anon, authenticated, service_role;
+grant all on all functions in schema public to anon, authenticated, service_role;
+alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+
 alter table public.staff_profiles enable row level security;
 alter table public.categories enable row level security;
 alter table public.products enable row level security;
