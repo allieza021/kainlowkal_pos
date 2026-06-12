@@ -1111,43 +1111,52 @@ function OrdersPage({
   });
 
   async function toggleStatus(order: Order) {
-    const next = order.payment_status === 'Paid' ? 'Unpaid' : 'Paid';
-    await supabase.from('orders').update({ payment_status: next }).eq('id', order.id);
-    await load();
+    try {
+      const next = order.payment_status === 'Paid' ? 'Unpaid' : 'Paid';
+      const { error } = await supabase.from('orders').update({ payment_status: next }).eq('id', order.id);
+      if (error) throw error;
+      await load();
+    } catch (err: any) {
+      alert(`Failed to update status: ${err.message || err}`);
+    }
   }
 
   async function saveEdit(updated: Partial<Order> & { items?: OrderItem[] }) {
     if (!editOrder) return;
-    const { items, ...orderUpdate } = updated;
+    try {
+      const { items, ...orderUpdate } = updated;
 
-    const payload = {
-      ...orderUpdate,
-      delivery_fee: parseFloat(String(orderUpdate.delivery_fee ?? 0)),
-      subtotal: parseFloat(String(orderUpdate.subtotal ?? 0)),
-      total: parseFloat(String(orderUpdate.total ?? 0))
-    };
+      const payload = {
+        ...orderUpdate,
+        delivery_fee: parseFloat(String(orderUpdate.delivery_fee ?? 0)),
+        subtotal: parseFloat(String(orderUpdate.subtotal ?? 0)),
+        total: parseFloat(String(orderUpdate.total ?? 0))
+      };
 
-    const { error } = await supabase.from('orders').update(payload).eq('id', editOrder.id);
-    if (error) throw error;
+      const { error } = await supabase.from('orders').update(payload).eq('id', editOrder.id);
+      if (error) throw error;
 
-    if (items && items.length > 0) {
-      await supabase.from('order_items').delete().eq('order_id', editOrder.id);
-      await supabase.from('order_items').insert(
-        items.map((item) => ({
-          order_id: editOrder.id,
-          product_id: item.product_id,
-          product_name: item.product_name,
-          variant_name: item.variant_name || null,
-          quantity: item.quantity,
-          unit_price: parseFloat(String(item.unit_price)),
-          total_price: parseFloat(String(item.quantity * item.unit_price)),
-          notes: item.notes || null
-        }))
-      );
+      if (items && items.length > 0) {
+        await supabase.from('order_items').delete().eq('order_id', editOrder.id);
+        await supabase.from('order_items').insert(
+          items.map((item) => ({
+            order_id: editOrder.id,
+            product_id: item.product_id,
+            product_name: item.product_name,
+            variant_name: item.variant_name || null,
+            quantity: item.quantity,
+            unit_price: parseFloat(String(item.unit_price)),
+            total_price: parseFloat(String(item.quantity * item.unit_price)),
+            notes: item.notes || null
+          }))
+        );
+      }
+
+      setEditOrder(null);
+      await load();
+    } catch (err: any) {
+      alert(`Failed to save edits: ${err.message || err}`);
     }
-
-    setEditOrder(null);
-    await load();
   }
 
   async function deleteOrder(order: Order) {
