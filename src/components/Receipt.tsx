@@ -110,7 +110,7 @@ export const PrintableReceipt = forwardRef<HTMLDivElement, { order: ReceiptOrder
             size: 80mm auto; 
             margin: 0; 
           }
-          .receipt-wrap { padding: 4mm; width: 100%; box-sizing: border-box; }
+          .receipt-wrap { padding: 4mm 4mm 12mm 4mm; width: 100%; box-sizing: border-box; }
           .receipt-center { text-align: center; }
           .receipt-divider { border-top: 1px dashed #000; margin: 8px 0; }
           .receipt-logo img { max-width: 50mm; max-height: 40mm; display: block; margin: 0 auto 8px auto; }
@@ -121,7 +121,12 @@ export const PrintableReceipt = forwardRef<HTMLDivElement, { order: ReceiptOrder
         }
         @media screen {
           #print-receipt-container {
-            display: none;
+            /* Render off-screen instead of display:none so assets load immediately */
+            position: absolute;
+            left: -9999px;
+            top: -9999px;
+            opacity: 0;
+            pointer-events: none;
           }
         }
       `}</style>
@@ -202,10 +207,17 @@ export const PrintableReceipt = forwardRef<HTMLDivElement, { order: ReceiptOrder
 export async function executePrint(printRef: React.RefObject<HTMLDivElement>) {
   if (!printRef.current) return;
 
-  // 1. Wait for all images in the receipt to finish loading
+  // 1. Wait for custom fonts to load (crucial for receipt formatting)
+  if (document.fonts && document.fonts.ready) {
+    await document.fonts.ready;
+  }
+
+  // 2. Wait for all images in the receipt to finish loading
   const images = printRef.current.getElementsByTagName('img');
   const imagePromises = Array.from(images).map(img => {
-    if (img.complete) return Promise.resolve();
+    // If the image is already loaded and has dimensions, resolve immediately
+    if (img.complete && img.naturalHeight !== 0) return Promise.resolve();
+    
     return new Promise(resolve => {
       img.onload = resolve;
       img.onerror = resolve; // Resolve on error so we don't block printing forever
@@ -214,10 +226,13 @@ export async function executePrint(printRef: React.RefObject<HTMLDivElement>) {
 
   await Promise.all(imagePromises);
 
-  // 2. Add a slight delay to allow React state to settle and DOM layout to paint (crucial for slow Android tablets)
-  await new Promise(resolve => setTimeout(resolve, 200));
+  // 3. Force a browser repaint to ensure the DOM is fully updated before opening the print dialog
+  await new Promise(resolve => requestAnimationFrame(resolve));
 
-  // 3. Trigger native print spooler
+  // 4. Add a slight delay to allow slow Android tablets/Huawei devices to process the layout
+  await new Promise(resolve => setTimeout(resolve, 300));
+
+  // 5. Trigger native print spooler
   window.print();
 }
 

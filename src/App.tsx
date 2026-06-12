@@ -1150,6 +1150,25 @@ function OrdersPage({
     await load();
   }
 
+  async function deleteOrder(order: Order) {
+    if (!confirm(`Are you sure you want to delete Order #${order.order_number}? This will permanently remove it from sales records.`)) {
+      return;
+    }
+    
+    try {
+      // The database likely has cascading deletes, but to be safe we can manually delete items first if needed, 
+      // or just delete the order. We will try deleting the order. If there is a foreign key constraint error, we delete items first.
+      await supabase.from('order_items').delete().eq('order_id', order.id);
+      const { error } = await supabase.from('orders').delete().eq('id', order.id);
+      
+      if (error) throw error;
+      
+      await load();
+    } catch (err: any) {
+      alert(`Failed to delete order: ${err.message || err}`);
+    }
+  }
+
   return (
     <div className="h-full overflow-y-auto p-4 lg:p-6">
       <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-gray-100 bg-white p-4">
@@ -1210,6 +1229,10 @@ function OrdersPage({
                   <button onClick={() => setEditOrder(order)} className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50">
                     <FilePenLine size={16} className="mr-2 inline" />
                     Edit
+                  </button>
+                  <button onClick={() => deleteOrder(order)} className="rounded-xl border border-red-200 px-3 py-2 text-sm font-semibold text-red-500 transition hover:bg-red-50">
+                    <Trash2 size={16} className="mr-2 inline" />
+                    Delete
                   </button>
                   <button onClick={() => onPreviewReceipt(receipt)} className="rounded-xl bg-gray-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-800">
                     <Printer size={16} className="mr-2 inline" />
