@@ -98,11 +98,79 @@ export function printReceipt(order: ReceiptOrder) {
   }, 500);
 }
 
-export function printRawBT(order: ReceiptOrder) {
-  const html = buildReceiptHtml(order);
-  // Use base64 data URI format for RawBT to properly parse HTML
-  const b64 = btoa(unescape(encodeURIComponent(html)));
-  const intentUrl = "intent:data:text/html;base64," + b64 + "#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;";
-  window.location.href = intentUrl;
+function alignCenter(str: string, len: number) {
+  if (str.length >= len) return str.substring(0, len);
+  const pad = len - str.length;
+  const left = Math.floor(pad / 2);
+  const right = pad - left;
+  return ' '.repeat(left) + str + ' '.repeat(right);
 }
+
+function padRight(str: string, len: number) {
+  if (str.length >= len) return str.substring(0, len);
+  return str + ' '.repeat(len - str.length);
+}
+
+export function buildReceiptText(order: ReceiptOrder) {
+  const line = '-'.repeat(32) + '\\n';
+  let text = '';
+  
+  text += alignCenter(order.business_name || 'KAINLOWKAL', 32) + '\\n';
+  text += alignCenter(order.tagline || 'SINCE 2019', 32) + '\\n';
+  text += line;
+  
+  text += \`Order #: \${order.order_number}\\n\`;
+  text += \`Date: \${formatDateTime(order.created_at || new Date().toISOString())}\\n\`;
+  text += \`Type: \${order.order_type}\\n\`;
+  text += \`Customer: \${order.customer_name}\\n\`;
+  if (order.customer_contact) text += \`Contact: \${order.customer_contact}\\n\`;
+  if (order.delivery_address && order.order_type === 'Delivery') {
+    text += \`Address: \${order.delivery_address}\\n\`;
+  }
+  text += \`Cashier: \${order.cashier_name || ''}\\n\`;
+  text += line;
+  text += 'ITEMS\\n';
+  
+  (order.items || []).forEach(item => {
+    let name = item.product_name;
+    if (item.variant_name) name += \` (\${item.variant_name})\`;
+    if (name.length > 32) name = name.substring(0, 32);
+    text += name + '\\n';
+    
+    const qtyPrice = \`\${item.quantity} x \${formatCurrency(item.unit_price)}\`;
+    const total = formatCurrency(item.total_price);
+    
+    const space = 32 - qtyPrice.length - total.length;
+    text += qtyPrice + (space > 0 ? ' '.repeat(space) : ' ') + total + '\\n';
+  });
+  
+  text += line;
+  
+  const subtotalStr = formatCurrency(order.subtotal);
+  text += padRight('Subtotal:', 32 - subtotalStr.length) + subtotalStr + '\\n';
+  
+  if (order.delivery_fee > 0) {
+    const feeStr = formatCurrency(order.delivery_fee);
+    text += padRight('Delivery:', 32 - feeStr.length) + feeStr + '\\n';
+  }
+  
+  const totalStr = formatCurrency(order.total);
+  text += padRight('TOTAL:', 32 - totalStr.length) + totalStr + '\\n';
+  
+  text += \`Payment: \${order.payment_method}\\n\`;
+  text += \`Status: \${order.payment_status}\\n\`;
+  text += line;
+  text += alignCenter('Thank you!', 32) + '\\n';
+  text += alignCenter(order.receipt_footer || 'Order slip only.', 32) + '\\n';
+  
+  return text;
+}
+
+export function printRawBT(order: ReceiptOrder) {
+  const text = buildReceiptText(order);
+  const beforeUrl = 'intent:';
+  const afterUrl = '#Intent;component=ru.a402d.rawbtprinter.activity.PrintDownloadActivity;package=ru.a402d.rawbtprinter;end;';
+  window.location.href = beforeUrl + encodeURI(text) + afterUrl;
+}
+
 
