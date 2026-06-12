@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Layout, type PageKey } from './components/Layout';
-import { buildReceiptHtml, printReceipt } from './components/Receipt';
+import { buildReceiptHtml, printReceipt, printRawBT } from './components/Receipt';
 import { validateLogoFile, getLogoFileName } from './lib/logoUtils';
 import type {
   BusinessSettings,
@@ -227,13 +227,21 @@ function ReceiptModal({
     <Modal title="Receipt Preview" onClose={onClose} widthClass="max-w-md">
       <div className="space-y-4">
         <div className="rounded-xl border border-gray-100 p-4 text-sm text-gray-600">
-          Receipt ready for print. Use the button below to open the thermal print window.
+          Receipt ready for print. Use the buttons below to print.
         </div>
         <button
-          className="w-full rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-orange-600"
+          className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-blue-700 flex items-center justify-center gap-2"
+          onClick={() => printRawBT({ ...order, ...settings })}
+        >
+          <Printer size={18} />
+          Print via RawBT App
+        </button>
+        <button
+          className="w-full rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-orange-600 flex items-center justify-center gap-2"
           onClick={() => printReceipt({ ...order, ...settings })}
         >
-          Print Receipt
+          <Printer size={18} />
+          Standard Web Print
         </button>
         <button
           className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition-all hover:bg-gray-50"

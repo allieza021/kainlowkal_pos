@@ -66,15 +66,31 @@ export function buildReceiptHtml(order: ReceiptOrder) {
 }
 
 export function printReceipt(order: ReceiptOrder) {
-  const win = window.open('', '_blank', 'width=420,height=720');
-  if (!win) throw new Error('Popup blocked.');
-  win.document.open();
-  win.document.write(buildReceiptHtml(order));
-  win.document.close();
-  win.focus();
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  document.body.appendChild(iframe);
+  
+  iframe.contentDocument?.open();
+  iframe.contentDocument?.write(buildReceiptHtml(order));
+  iframe.contentDocument?.close();
+  
+  // Give images a moment to load before printing
   setTimeout(() => {
-    win.print();
-    win.close();
-  }, 300);
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+    setTimeout(() => {
+      if (document.body.contains(iframe)) {
+        document.body.removeChild(iframe);
+      }
+    }, 1000);
+  }, 500);
+}
+
+export function printRawBT(order: ReceiptOrder) {
+  const html = buildReceiptHtml(order);
+  // Use base64 data URI format for RawBT to properly parse HTML
+  const b64 = btoa(unescape(encodeURIComponent(html)));
+  const intentUrl = "intent:data:text/html;base64," + b64 + "#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;";
+  window.location.href = intentUrl;
 }
 
