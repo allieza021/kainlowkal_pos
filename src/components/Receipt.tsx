@@ -194,11 +194,12 @@ function padRight(str: string, len: number) {
 }
 
 export function buildReceiptText(order: ReceiptOrder) {
-  const line = '-'.repeat(32) + '\\n';
+  const WIDTH = 48; // 48 chars for 80mm printer
+  const line = '-'.repeat(WIDTH) + '\\n';
   let text = '';
   
-  text += alignCenter(order.business_name || 'KAINLOWKAL', 32) + '\\n';
-  text += alignCenter(order.tagline || 'SINCE 2019', 32) + '\\n';
+  text += alignCenter(order.business_name || 'KAINLOWKAL', WIDTH) + '\\n';
+  text += alignCenter(order.tagline || 'SINCE 2019', WIDTH) + '\\n';
   text += line;
   
   text += `Order #: ${order.order_number}\\n`;
@@ -216,43 +217,42 @@ export function buildReceiptText(order: ReceiptOrder) {
   (order.items || []).forEach(item => {
     let name = item.product_name;
     if (item.variant_name) name += ` (${item.variant_name})`;
-    if (name.length > 32) name = name.substring(0, 32);
+    if (name.length > WIDTH) name = name.substring(0, WIDTH);
     text += name + '\\n';
     
     const qtyPrice = `${item.quantity} x ${formatCurrency(item.unit_price)}`;
     const total = formatCurrency(item.total_price);
     
-    const space = 32 - qtyPrice.length - total.length;
+    const space = WIDTH - qtyPrice.length - total.length;
     text += qtyPrice + (space > 0 ? ' '.repeat(space) : ' ') + total + '\\n';
   });
   
   text += line;
   
   const subtotalStr = formatCurrency(order.subtotal);
-  text += padRight('Subtotal:', 32 - subtotalStr.length) + subtotalStr + '\\n';
+  text += padRight('Subtotal:', WIDTH - subtotalStr.length) + subtotalStr + '\\n';
   
   if (order.delivery_fee > 0) {
     const feeStr = formatCurrency(order.delivery_fee);
-    text += padRight('Delivery:', 32 - feeStr.length) + feeStr + '\\n';
+    text += padRight('Delivery:', WIDTH - feeStr.length) + feeStr + '\\n';
   }
   
   const totalStr = formatCurrency(order.total);
-  text += padRight('TOTAL:', 32 - totalStr.length) + totalStr + '\\n';
+  text += padRight('TOTAL:', WIDTH - totalStr.length) + totalStr + '\\n';
   
   text += `Payment: ${order.payment_method}\\n`;
   text += `Status: ${order.payment_status}\\n`;
   text += line;
-  text += alignCenter('Thank you!', 32) + '\\n';
-  text += alignCenter(order.receipt_footer || 'Order slip only.', 32) + '\\n';
+  text += alignCenter('Thank you!', WIDTH) + '\\n';
+  text += alignCenter(order.receipt_footer || 'Order slip only.', WIDTH) + '\\n';
   
   return text;
 }
 
 export function printRawBT(order: ReceiptOrder) {
   const text = buildReceiptText(order);
-  const beforeUrl = 'intent:';
-  const afterUrl = '#Intent;component=ru.a402d.rawbtprinter.activity.PrintDownloadActivity;package=ru.a402d.rawbtprinter;end;';
-  window.location.href = beforeUrl + encodeURI(text) + afterUrl;
+  // Use the rawbt: scheme directly. PrintDownloadActivity expects a URL, not raw text.
+  window.location.href = "rawbt:" + encodeURIComponent(text);
 }
 
 
