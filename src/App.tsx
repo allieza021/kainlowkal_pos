@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, useRef, type ReactNode } from 'react';
 import {
   BarChart3,
   ChevronDown,
@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Layout, type PageKey } from './components/Layout';
-import { buildReceiptHtml, printReceipt, printRawBT } from './components/Receipt';
+import { buildReceiptHtml, PrintableReceipt, executePrint, printRawBT } from './components/Receipt';
 import { validateLogoFile, getLogoFileName } from './lib/logoUtils';
 import type {
   BusinessSettings,
@@ -223,6 +223,18 @@ function ReceiptModal({
   settings: BusinessSettings;
   onClose: () => void;
 }) {
+  const printRef = useRef<HTMLDivElement>(null);
+  const [isPrinting, setIsPrinting] = useState(false);
+
+  const handlePrint = async () => {
+    setIsPrinting(true);
+    try {
+      await executePrint(printRef);
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
   return (
     <Modal title="Receipt Preview" onClose={onClose} widthClass="max-w-md">
       <div className="space-y-4">
@@ -232,24 +244,30 @@ function ReceiptModal({
         <button
           className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-blue-700 flex items-center justify-center gap-2"
           onClick={() => printRawBT({ ...order, ...settings })}
+          disabled={isPrinting}
         >
           <Printer size={18} />
           Print via RawBT App
         </button>
         <button
-          className="w-full rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-orange-600 flex items-center justify-center gap-2"
-          onClick={() => printReceipt({ ...order, ...settings })}
+          className="w-full rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-orange-600 flex items-center justify-center gap-2 disabled:opacity-50"
+          onClick={handlePrint}
+          disabled={isPrinting}
         >
           <Printer size={18} />
-          Standard Web Print
+          {isPrinting ? 'Preparing Print...' : 'Standard Web Print'}
         </button>
         <button
           className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition-all hover:bg-gray-50"
           onClick={onClose}
+          disabled={isPrinting}
         >
           Close
         </button>
       </div>
+
+      {/* Visually hidden receipt component that gets printed */}
+      <PrintableReceipt ref={printRef} order={{ ...order, ...settings }} />
     </Modal>
   );
 }

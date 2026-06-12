@@ -77,107 +77,148 @@ export function buildReceiptHtml(order: ReceiptOrder) {
   </html>`;
 }
 
-export function printReceipt(order: ReceiptOrder) {
-  const printDiv = document.createElement('div');
-  printDiv.id = 'print-receipt-container';
-  // Use robust CSS for 80mm Android/Chrome printing with Arial font
-  printDiv.innerHTML = `
-    <style>
-      @media print {
-        body * {
-          visibility: hidden;
-        }
-        #print-receipt-container, #print-receipt-container * {
-          visibility: visible;
-        }
-        #print-receipt-container {
-          position: absolute;
-          left: 0;
-          top: 0;
-          margin: 0;
-          padding: 0;
-          width: 100%;
-          max-width: 80mm;
-          background-color: #ffffff;
-          color: #000000;
-          font-family: Arial, Helvetica, sans-serif;
-          font-size: 16px;
-          line-height: 1.3;
-        }
-        @page { 
-          size: 80mm auto; 
-          margin: 0; 
-        }
-        .receipt-wrap { padding: 4mm; width: 100%; box-sizing: border-box; }
-        .receipt-center { text-align: center; }
-        .receipt-divider { border-top: 1px dashed #000; margin: 8px 0; }
-        .receipt-logo img { max-width: 50mm; max-height: 40mm; display: block; margin: 0 auto 8px auto; }
-        .receipt-header { font-weight: 700; letter-spacing: 1px; font-size: 20px; text-transform: uppercase; }
-        .receipt-tagline { font-size: 14px; color: #333; }
-        .receipt-table { width: 100%; border-collapse: collapse; }
-        .receipt-table td { vertical-align: top; padding: 4px 0; }
-      }
-    </style>
-    <div class="receipt-wrap">
-      <div class="receipt-center">
-        ${order.logo_url ? `<div class="receipt-logo"><img src="${order.logo_url}" alt="Logo" /></div>` : ''}
-        ${!order.logo_url ? `<div class="receipt-header">${order.business_name || 'KAINLOWKAL'}</div><div class="receipt-tagline">${order.tagline || 'SINCE 2019'}</div>` : ''}
-      </div>
-      <div class="receipt-divider"></div>
-      <div>Order #: <strong>${order.order_number}</strong></div>
-      <div>Date: ${formatDateTime(order.created_at || new Date().toISOString())}</div>
-      <div>Type: <strong>${order.order_type}</strong></div>
-      <div>Customer: ${order.customer_name}</div>
-      ${order.customer_contact ? `<div>Contact: ${order.customer_contact}</div>` : ''}
-      ${order.delivery_address && order.order_type === 'Delivery' ? `<div>Address: ${order.delivery_address}</div>` : ''}
-      <div>Cashier: ${order.cashier_name || ''}</div>
-      <div class="receipt-divider"></div>
-      <div style="font-weight:700; font-size:18px; margin-bottom: 6px;">ITEMS</div>
-      <table class="receipt-table">
-        ${(order.items || []).map(item => `
-          <tr>
-            <td>
-              <div style="font-weight:700">${item.product_name}${item.variant_name ? ` (${item.variant_name})` : ''}</div>
-              <div style="font-size:14px;color:#333">${item.quantity} x ${formatCurrency(item.unit_price)}</div>
-            </td>
-            <td style="text-align:right; font-weight:700;">${formatCurrency(item.total_price)}</td>
-          </tr>
-        `).join('')}
-      </table>
-      <div class="receipt-divider"></div>
-      <table class="receipt-table">
-        <tr>
-          <td>Subtotal:</td>
-          <td style="text-align:right">${formatCurrency(order.subtotal)}</td>
-        </tr>
-        ${order.delivery_fee > 0 ? `
-        <tr>
-          <td>Delivery Fee:</td>
-          <td style="text-align:right">${formatCurrency(order.delivery_fee)}</td>
-        </tr>` : ''}
-      </table>
-      <div style="font-weight:700;font-size:22px;margin-top:8px;display:flex;justify-content:space-between;">
-        <span>TOTAL:</span>
-        <span>${formatCurrency(order.total)}</span>
-      </div>
-      <div style="margin-top:8px;">Payment: ${order.payment_method}</div>
-      <div>Status: ${order.payment_status}</div>
-      <div class="receipt-divider"></div>
-      <div class="receipt-center" style="font-weight:700; font-size: 18px;">Thank you for dining with us!</div>
-      <div class="receipt-center" style="font-style:italic;margin-top:8px;font-size:12px;">${order.receipt_footer || 'This is an order slip only and not an official receipt.'}</div>
-    </div>
-  `;
+import React, { forwardRef } from 'react';
 
-  document.body.appendChild(printDiv);
-  
-  setTimeout(() => {
-    window.print();
-    setTimeout(() => {
-      if (document.body.contains(printDiv)) {
-        document.body.removeChild(printDiv);
-      }
-    }, 1000);
-  }, 500);
+// ... (keep existing buildReceiptHtml and buildReceiptText)
+
+export const PrintableReceipt = forwardRef<HTMLDivElement, { order: ReceiptOrder }>(({ order }, ref) => {
+  return (
+    <div id="print-receipt-container" ref={ref}>
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          #print-receipt-container, #print-receipt-container * {
+            visibility: visible;
+          }
+          #print-receipt-container {
+            position: absolute;
+            left: 0;
+            top: 0;
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            max-width: 80mm;
+            background-color: #ffffff;
+            color: #000000;
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 16px;
+            line-height: 1.3;
+          }
+          @page { 
+            size: 80mm auto; 
+            margin: 0; 
+          }
+          .receipt-wrap { padding: 4mm; width: 100%; box-sizing: border-box; }
+          .receipt-center { text-align: center; }
+          .receipt-divider { border-top: 1px dashed #000; margin: 8px 0; }
+          .receipt-logo img { max-width: 50mm; max-height: 40mm; display: block; margin: 0 auto 8px auto; }
+          .receipt-header { font-weight: 700; letter-spacing: 1px; font-size: 20px; text-transform: uppercase; }
+          .receipt-tagline { font-size: 14px; color: #333; }
+          .receipt-table { width: 100%; border-collapse: collapse; }
+          .receipt-table td { vertical-align: top; padding: 4px 0; }
+        }
+        @media screen {
+          #print-receipt-container {
+            display: none;
+          }
+        }
+      `}</style>
+      <div className="receipt-wrap">
+        <div className="receipt-center">
+          {order.logo_url && (
+            <div className="receipt-logo">
+              <img src={order.logo_url} alt="Logo" />
+            </div>
+          )}
+          {!order.logo_url && (
+            <>
+              <div className="receipt-header">{order.business_name || 'KAINLOWKAL'}</div>
+              <div className="receipt-tagline">{order.tagline || 'SINCE 2019'}</div>
+            </>
+          )}
+        </div>
+        <div className="receipt-divider"></div>
+        <div>Order #: <strong>{order.order_number}</strong></div>
+        <div>Date: {formatDateTime(order.created_at || new Date().toISOString())}</div>
+        <div>Type: <strong>{order.order_type}</strong></div>
+        <div>Customer: {order.customer_name}</div>
+        {order.customer_contact && <div>Contact: {order.customer_contact}</div>}
+        {order.delivery_address && order.order_type === 'Delivery' && <div>Address: {order.delivery_address}</div>}
+        <div>Cashier: {order.cashier_name || ''}</div>
+        <div className="receipt-divider"></div>
+        <div style={{ fontWeight: 700, fontSize: '18px', marginBottom: '6px' }}>ITEMS</div>
+        <table className="receipt-table">
+          <tbody>
+            {(order.items || []).map((item, idx) => (
+              <tr key={idx}>
+                <td>
+                  <div style={{ fontWeight: 700 }}>
+                    {item.product_name}{item.variant_name ? ` (${item.variant_name})` : ''}
+                  </div>
+                  <div style={{ fontSize: '14px', color: '#333' }}>
+                    {item.quantity} x {formatCurrency(item.unit_price)}
+                  </div>
+                </td>
+                <td style={{ textAlign: 'right', fontWeight: 700 }}>
+                  {formatCurrency(item.total_price)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="receipt-divider"></div>
+        <table className="receipt-table">
+          <tbody>
+            <tr>
+              <td>Subtotal:</td>
+              <td style={{ textAlign: 'right' }}>{formatCurrency(order.subtotal)}</td>
+            </tr>
+            {order.delivery_fee > 0 && (
+              <tr>
+                <td>Delivery Fee:</td>
+                <td style={{ textAlign: 'right' }}>{formatCurrency(order.delivery_fee)}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        <div style={{ fontWeight: 700, fontSize: '22px', marginTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
+          <span>TOTAL:</span>
+          <span>{formatCurrency(order.total)}</span>
+        </div>
+        <div style={{ marginTop: '8px' }}>Payment: {order.payment_method}</div>
+        <div>Status: {order.payment_status}</div>
+        <div className="receipt-divider"></div>
+        <div className="receipt-center" style={{ fontWeight: 700, fontSize: '18px' }}>Thank you for dining with us!</div>
+        <div className="receipt-center" style={{ fontStyle: 'italic', marginTop: '8px', fontSize: '12px' }}>
+          {order.receipt_footer || 'This is an order slip only and not an official receipt.'}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+export async function executePrint(printRef: React.RefObject<HTMLDivElement>) {
+  if (!printRef.current) return;
+
+  // 1. Wait for all images in the receipt to finish loading
+  const images = printRef.current.getElementsByTagName('img');
+  const imagePromises = Array.from(images).map(img => {
+    if (img.complete) return Promise.resolve();
+    return new Promise(resolve => {
+      img.onload = resolve;
+      img.onerror = resolve; // Resolve on error so we don't block printing forever
+    });
+  });
+
+  await Promise.all(imagePromises);
+
+  // 2. Add a slight delay to allow React state to settle and DOM layout to paint (crucial for slow Android tablets)
+  await new Promise(resolve => setTimeout(resolve, 200));
+
+  // 3. Trigger native print spooler
+  window.print();
 }
 
 function alignCenter(str: string, len: number) {
