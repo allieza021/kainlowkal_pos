@@ -53,14 +53,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initialize();
 
     const { data } = supabase
-      ? supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+      ? supabase.auth.onAuthStateChange((_event, nextSession) => {
           setSession(nextSession);
+          setLoading(false);
           if (nextSession?.user?.id) {
-            await loadProfile(nextSession.user.id);
+            // Defer any Supabase call out of this callback: awaiting one here
+            // holds the auth lock and deadlocks every later request.
+            const userId = nextSession.user.id;
+            setTimeout(() => {
+              loadProfile(userId);
+            }, 0);
           } else {
             setProfile(null);
           }
-          setLoading(false);
         })
       : { subscription: { unsubscribe() {} } };
 
