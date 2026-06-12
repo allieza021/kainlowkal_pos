@@ -20,18 +20,30 @@ export function buildReceiptHtml(order: ReceiptOrder) {
   <html>
     <head>
       <meta charset="utf-8" />
+      <meta name="viewport" content="width=58mm, initial-scale=1.0" />
       <style>
         @page { size: 58mm auto; margin: 0; }
-        body { margin:0; width:58mm; font-family:'Courier New', monospace; font-size:9px; color:#111; }
-        .wrap { padding: 4mm 3mm; }
-        .center { text-align:center; }
-        .divider { border-top:1px dashed #111; margin:6px 0; }
-        .logo-container { margin-bottom:6px; }
-        .logo-container img { max-width:50mm; max-height:30mm; display:block; margin:0 auto; }
-        .header-text { font-weight:700;letter-spacing:2px; }
-        .tagline { font-size:8px;color:#555; }
-        table { width:100%; border-collapse:collapse; }
-        td { vertical-align:top; }
+        html, body { 
+          margin: 0; 
+          padding: 0; 
+          width: 58mm; 
+          background-color: #ffffff; 
+          color: #000000; 
+        }
+        body { 
+          font-family: 'Courier New', Courier, monospace; 
+          font-size: 12px; 
+          line-height: 1.2;
+        }
+        .wrap { padding: 2mm; width: 58mm; box-sizing: border-box; }
+        .center { text-align: center; }
+        .divider { border-top: 1px dashed #000; margin: 5px 0; }
+        .logo-container { margin-bottom: 5px; }
+        .logo-container img { max-width: 40mm; max-height: 30mm; display: block; margin: 0 auto; }
+        .header-text { font-weight: 700; letter-spacing: 1px; font-size: 14px; }
+        .tagline { font-size: 10px; color: #333; }
+        table { width: 100%; border-collapse: collapse; }
+        td { vertical-align: top; }
       </style>
     </head>
     <body>
