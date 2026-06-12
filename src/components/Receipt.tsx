@@ -119,25 +119,25 @@ export function buildReceiptText(order: ReceiptOrder) {
   text += alignCenter(order.tagline || 'SINCE 2019', 32) + '\\n';
   text += line;
   
-  text += \`Order #: \${order.order_number}\\n\`;
-  text += \`Date: \${formatDateTime(order.created_at || new Date().toISOString())}\\n\`;
-  text += \`Type: \${order.order_type}\\n\`;
-  text += \`Customer: \${order.customer_name}\\n\`;
-  if (order.customer_contact) text += \`Contact: \${order.customer_contact}\\n\`;
+  text += `Order #: ${order.order_number}\\n`;
+  text += `Date: ${formatDateTime(order.created_at || new Date().toISOString())}\\n`;
+  text += `Type: ${order.order_type}\\n`;
+  text += `Customer: ${order.customer_name}\\n`;
+  if (order.customer_contact) text += `Contact: ${order.customer_contact}\\n`;
   if (order.delivery_address && order.order_type === 'Delivery') {
-    text += \`Address: \${order.delivery_address}\\n\`;
+    text += `Address: ${order.delivery_address}\\n`;
   }
-  text += \`Cashier: \${order.cashier_name || ''}\\n\`;
+  text += `Cashier: ${order.cashier_name || ''}\\n`;
   text += line;
   text += 'ITEMS\\n';
   
   (order.items || []).forEach(item => {
     let name = item.product_name;
-    if (item.variant_name) name += \` (\${item.variant_name})\`;
+    if (item.variant_name) name += ` (${item.variant_name})`;
     if (name.length > 32) name = name.substring(0, 32);
     text += name + '\\n';
     
-    const qtyPrice = \`\${item.quantity} x \${formatCurrency(item.unit_price)}\`;
+    const qtyPrice = `${item.quantity} x ${formatCurrency(item.unit_price)}`;
     const total = formatCurrency(item.total_price);
     
     const space = 32 - qtyPrice.length - total.length;
@@ -157,8 +157,8 @@ export function buildReceiptText(order: ReceiptOrder) {
   const totalStr = formatCurrency(order.total);
   text += padRight('TOTAL:', 32 - totalStr.length) + totalStr + '\\n';
   
-  text += \`Payment: \${order.payment_method}\\n\`;
-  text += \`Status: \${order.payment_status}\\n\`;
+  text += `Payment: ${order.payment_method}\\n`;
+  text += `Status: ${order.payment_status}\\n`;
   text += line;
   text += alignCenter('Thank you!', 32) + '\\n';
   text += alignCenter(order.receipt_footer || 'Order slip only.', 32) + '\\n';
