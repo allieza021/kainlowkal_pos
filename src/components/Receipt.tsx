@@ -78,25 +78,83 @@ export function buildReceiptHtml(order: ReceiptOrder) {
 }
 
 export function printReceipt(order: ReceiptOrder) {
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'absolute';
-  iframe.style.width = '0px';
-  iframe.style.height = '0px';
-  iframe.style.border = 'none';
-  iframe.style.visibility = 'hidden';
-  document.body.appendChild(iframe);
+  const printDiv = document.createElement('div');
+  printDiv.id = 'print-receipt-container';
+  // Use a scoped style specifically for printing
+  printDiv.innerHTML = `
+    <style>
+      @media print {
+        body > *:not(#print-receipt-container) {
+          display: none !important;
+        }
+        @page { size: 58mm auto; margin: 0; }
+        #print-receipt-container {
+          margin: 0; 
+          padding: 0; 
+          width: 58mm; 
+          background-color: #ffffff; 
+          color: #000000;
+          font-family: 'Courier New', Courier, monospace; 
+          font-size: 12px; 
+          line-height: 1.2;
+        }
+        .receipt-wrap { padding: 2mm; width: 58mm; box-sizing: border-box; }
+        .receipt-center { text-align: center; }
+        .receipt-divider { border-top: 1px dashed #000; margin: 5px 0; }
+        .receipt-logo img { max-width: 40mm; max-height: 30mm; display: block; margin: 0 auto 5px auto; }
+        .receipt-header { font-weight: 700; letter-spacing: 1px; font-size: 14px; }
+        .receipt-tagline { font-size: 10px; color: #333; }
+        .receipt-table { width: 100%; border-collapse: collapse; }
+        .receipt-table td { vertical-align: top; }
+      }
+    </style>
+    <div id="print-receipt-container">
+      <div class="receipt-wrap">
+        <div class="receipt-center">
+          ${order.logo_url ? `<div class="receipt-logo"><img src="${order.logo_url}" alt="Logo" /></div>` : ''}
+          ${!order.logo_url ? `<div class="receipt-header">${order.business_name || 'KAINLOWKAL'}</div><div class="receipt-tagline">${order.tagline || 'SINCE 2019'}</div>` : ''}
+        </div>
+        <div class="receipt-divider"></div>
+        <div>Order #: ${order.order_number}</div>
+        <div>Date: ${formatDateTime(order.created_at || new Date().toISOString())}</div>
+        <div>Type: ${order.order_type}</div>
+        <div>Customer: ${order.customer_name}</div>
+        ${order.customer_contact ? `<div>Contact: ${order.customer_contact}</div>` : ''}
+        ${order.delivery_address && order.order_type === 'Delivery' ? `<div>Address: ${order.delivery_address}</div>` : ''}
+        <div>Cashier: ${order.cashier_name || ''}</div>
+        <div class="receipt-divider"></div>
+        <div style="font-weight:700">ITEMS</div>
+        <table class="receipt-table">
+          ${(order.items || []).map(item => `
+            <tr>
+              <td>
+                <div style="font-weight:700">${item.product_name}${item.variant_name ? ` (${item.variant_name})` : ''}</div>
+                <div style="font-size:10px;color:#333">${item.quantity} x ${formatCurrency(item.unit_price)}</div>
+              </td>
+              <td style="text-align:right">${formatCurrency(item.total_price)}</td>
+            </tr>
+          `).join('')}
+        </table>
+        <div class="receipt-divider"></div>
+        <div>Subtotal: ${formatCurrency(order.subtotal)}</div>
+        ${order.delivery_fee > 0 ? `<div>Delivery Fee: ${formatCurrency(order.delivery_fee)}</div>` : ''}
+        <div style="font-weight:700;font-size:14px;margin-top:5px;">TOTAL: ${formatCurrency(order.total)}</div>
+        <div style="margin-top:5px;">Payment: ${order.payment_method}</div>
+        <div>Status: ${order.payment_status}</div>
+        <div class="receipt-divider"></div>
+        <div class="receipt-center">Thank you for dining with us!</div>
+        <div class="receipt-center" style="font-style:italic;margin-top:5px;">${order.receipt_footer || 'This is an order slip only and not an official receipt.'}</div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(printDiv);
   
-  iframe.contentDocument?.open();
-  iframe.contentDocument?.write(buildReceiptHtml(order));
-  iframe.contentDocument?.close();
-  
-  // Give images a moment to load before printing
   setTimeout(() => {
-    iframe.contentWindow?.focus();
-    iframe.contentWindow?.print();
+    window.print();
     setTimeout(() => {
-      if (document.body.contains(iframe)) {
-        document.body.removeChild(iframe);
+      if (document.body.contains(printDiv)) {
+        document.body.removeChild(printDiv);
       }
     }, 1000);
   }, 500);
