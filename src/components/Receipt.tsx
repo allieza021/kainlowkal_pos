@@ -79,7 +79,11 @@ export function buildReceiptHtml(order: ReceiptOrder) {
 
 export function printReceipt(order: ReceiptOrder) {
   const iframe = document.createElement('iframe');
-  iframe.style.display = 'none';
+  iframe.style.position = 'absolute';
+  iframe.style.width = '0px';
+  iframe.style.height = '0px';
+  iframe.style.border = 'none';
+  iframe.style.visibility = 'hidden';
   document.body.appendChild(iframe);
   
   iframe.contentDocument?.open();
